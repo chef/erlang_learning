@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Erlang Learning: Concurrency</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+     <script src="jquery.js"></script>
+    <script>
+    <!--$(function(){-->
+      <!--$("#includedContent").load("Slides.md");-->
+    <!--});-->
+    </script>
+  </head>
+  <body>
+    <textarea id="source">
+
+# Processes and Concurrency
+
+Welcome back!
+
+Today we'll cover the basic building blocks of concurrency in Erlang:
+
+* processes: a way to isolate code and run it concurrently
+* messages: this is how processes talk to each other.
+
+---
+
+# What is a Process?
+
+* lightweight, isolated environment in which code runs concurrently
+* messages are the only a process can be communicated with
+* consider them as low-overhead OS threads:
+  * low resource usage, very fast to create
+	* most similar to the original Java 'green threads' implementation.
+	* they have their own memory like a thread
+	* less overhead than a thread, signficantly faster to start.
+	* execution is scheduled by the Erlang VM.
+
+_[1] except for binary data - that's in a future session._
+
+---
+
+# Spawning a Process
+
+It's easy!  If you have code to run, you can run it as an Erlang process.
+
+Example: simple_spawn
+
+---
+
+# What did we just do?
+
+When we ran this, we saw something that looked much like this:
+
+```
+<0.36.0>
+```
+
+That's the process identifer (_PID_) of the spawned process.
+
+This process won't do very much - it just returns "hello world" and
+terminates. If we want it to learn about what it's doing (or has already done)
+we'll need a way to talk to it.
+
+---
+
+# Sidebar: spawn
+
+`spawn` and several related functions are at the core of erlang concurrency.
+
+  * `spawn` is a built in function (_BIF_).
+	* it allocates a new process and returns the process ID.
+  * raises an error if it can't spawn the process.
+	* more ways of starting a process in the next session
+
+---
+
+# Messages - the basics
+
+Erlang provides messaging primitives:
+
+  * `!` sends a message
+	* `receive` receives a message
+	* sending messages to remote processes is the same as sending to local.
+
+Messages in Erlang are always copied[1] to be sent.
+
+Example: receiver
+
+[1] _Unless we're talking about large binaries. That's another one for next session._
+
+---
+
+# Messages - what can you send?
+
+Anything - even functions.
+
+Example: send_a_function
+
+Cautionary note: because all messages are copied,
+sending large non-binary messages can become expensive.
+
+---
+
+# Messages - the practical side
+
+* erlang guarantees that all messages will be _delivered_
+  if the recipient exists
+	* if the recipient does not exist, you won't find out!
+* it does not guarantee that all messages will be _received_.
+
+* `receive` can be used in a case-style pattern match
+   to pick and choose which messages you respond to.
+* messages not received remain in the mailbox
+
+Unlike a case statement, when a matching message is not found
+the process will wait until it one arrivese instead of crashing with a bad match
+or case statement error.
+
+Example: selective_receive
+
+---
+
+# Messages: continuing to listen
+
+Often you will want a process to receive more than just one messages.
+
+This is most commonly done via a tail recursion call into the receive block.
+
+Example: selective_receive_forever
+
+# Messages: timeout
+
+By adding a `after TimeInMS` clause to a `receive` block, you
+will cause the process to timeout waiting for a matching message if none is received.
+
+Example: receive_with_timeout
+
+---
+
+# Sidebar: process death
+
+Some things to note:
+	* any state held by the process is lost
+	* any messages in its mailbox are lost
+	* nothing else in the system is directly affected
+
+More on this and ways to manage it in the next session.
+
+---
+
+# Messages - who sent that?
+
+When your process receives a message, it will not know
+where it came from unless the sender included that information.
+
+* Erlang does not provide the PID of the sender
+* In cases where the sender expects a reply, they will
+  need to include the PID in their message.
+
+Example: replying
+
+---
+
+# Sidebar: Objects and Processes
+
+While objects are not thing that Erlang supports,
+the behavior of processes is similar in a lot of ways to class instances:
+
+* a process is an instance of running code with its own stack and heap.
+* you interact with it - potentially changing its state - by sending messages.
+
+---
+
+Questions?
+
+---
+
+# Next session
+
+	* Process Management
+		* exploring concurrency in Erlang
+		* state management
+		* linking and monitoring
+		* when a process dies unexpectedly
+		* supervision
+		* "let it crash" and how it affects design.
+
+    </textarea>
+    <script src="https://gnab.github.io/remark/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
