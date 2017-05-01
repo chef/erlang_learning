@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Erlang Learning: Basic Functional Programming in Erlang</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+     <script src="jquery.js"></script>
+    <script>
+    <!--$(function(){-->
+      <!--$("#includedContent").load("Slides.md");-->
+    <!--});-->
+    </script>
+  </head>
+  <body>
+    <textarea id="source">
+
+# Basic functional programming in Erlang
+
+Today we'll talk about functional programming, including
+* What is it?
+* Pure functions and immutability
+* Recursion vs loops
+* Tail recursion
+  * What is it
+  * Rewriting to be tail recursive (list append)
+* Common idioms: Map, Filter and Fold
+* List comprehensions
+* A little bit about functional data structures
+
+---
+
+# Erlang is a functional language
+
+What does that mean?
+
+  * Functions are first class entities, and can be passed and assigned
+    like any other type.
+  * Functions are pure (*)
+     *  Don't have or depend on side effects
+  
+(*) Technically that isn't always true, due to external state. In Erlang
+    there's message passing and other I/O
+
+---
+
+# Erlang is a functional language
+
+Implications:
+
+  * Functions can be passed to other functions and returned from them. 
+  * No mutable state
+    (That's why variables can't be reassigned).
+  * Recursion instead of imperative style 'for' or 'while' loops.
+  * Lack of mutable state make it easy to reason about the program.
+    * Modern compilers actually rewrite imperative programs
+    into a functional formt
+  * Processes in Erlang share no state with other processes.
+
+???
+
+* That lack of shared state is what makes Erlang so useful for parallel and distributed systems.
+
+---
+
+# Functions as first class entities.
+
+* We can declare functions
+
+```erlang
+example_1(X) ->
+  Function = fun(A, B) ->
+               A * B
+             end.
+  Function(X, 1).
+```
+* While you can get very complex (recursion, guards, etc)
+* Function expressions can be a bit opaque, and it might be easier to split it out:
+```erlang
+example_2(X)
+   Function = fun times/2,
+   Function(X,1).
+
+times(A, B) ->
+   A * B.
+```
+
+---
+
+# Functions are first class entities
+
+Functions can be passed to other functions and returned from them.
+
+```erlang
+make_increment_by(N) ->
+  fun(A) ->
+    A + N
+  end
+```
+* This returns a new function that increments by N
+* N is captured by the function definition in the body.
+
+???
+
+* Variable capture is vital; we use it everywhere.
+
+---
+
+# Functions can manipulate functions
+Functions that can accept and return functions as arguments are *Higher order functions*
+
+```erlang
+add(A, B) ->
+  A + B.
+
+partial_application(A, F2) ->
+  fun(X) ->
+    F2(A, X)
+  end
+
+make_increment_by(N) ->
+  partial_application(1, fun add/2).
+```
+
+There's a lot going on here!
+
+???
+
+* partial_application takes a value and any two argument function and makes a new one argument function
+* Note that we can refer to a function several ways; we can capture it in a variable and apply it (F2)
+* Or a named function can be referred to as fun name/arity
+
+---
+
+# Pure functions and immutability
+
+What if variables weren't immutable and we could change them after the fact?
+
+* Variables captured in a function def could change later
+* That would be very hard to reason about.
+* A function value wouldn't depend strictly on its arguments anymore
+* Our heads would explode.
+
+By accepting immutability, we make other powerful features possible to implement and use.
+
+* Higher order functions
+* Parallel execution
+
+But there's a cost.
+
+---
+
+# Recursion and loops: imperative style
+
+Imperative languages have looping constructs
+
+```ruby
+while i != 0
+  do_something()
+  i -= 1 	   
+end
+```
+
+* But you can't write that in Erlang; 'i' cannot change.
+
+---
+
+# Recursion and loops: functional style
+
+```erlang
+loop(0) ->
+  ok;
+loop(i) ->
+  do_something(),
+  loop(i-1).
+```
+???
+
+* We update i by calling the function recursively
+* Note we're using pattern match for termination; the loop(0) handles the exit
+* Unless do_something() has a side effect, this does nothing, and could be optimized away
+
+---
+
+# But what about the stack?
+
+* On a function call,
+  * We push the arguments and return location to the stack
+  * And transfer control to the start of the function
+
+* On function return
+  * We remove the arguments and replace it with the return value
+  * We transfer back to the saved return location.
+
+What happens if we call loop(100000000000)
+
+---
+
+# Stack diagram
+
+.center[![Stack Diagram](Stack_Diagram_1.png)]
+
+???
+
+* Each step in the recursion adds a new stack frame
+* If the value is large enough we can use all of our space.
+
+---
+
+# Tail Recursion
+
+But there's an optimization we can perform
+
+* Why do we need to save our state?
+  * Because there might be work left to do in the caller!
+  
+* But what if that's not the case?
+
+  * If the return value from the function is *exactly* the return value from the called function
+
+  * Then we can simply overwrite our caller frame with the callee
+
+---
+
+# Stack with tail recursion
+
+.center[![Stack Diagram](Stack_Diagram_2.png)]
+
+---
+
+# Our example from before is tail recursive
+
+```erlang
+loop(0) ->
+  ok;
+loop(i) ->
+  do_something(),
+  loop(i-1).
+```
+
+---
+
+# Not tail recursive
+
+```erlang
+factorial(1) ->
+  1;
+factorial(N) ->
+  N * factorial(N-1).
+```
+
+* Why? Because there's work left to be done; we need to multiply the return value
+
+---
+
+# Rewrite to be tail recursive
+
+```erlang
+factorial(N) ->
+  factorial_step(N, 1).
+
+factorial_step(1, Acc) ->
+  Acc;
+factorial_step(N, Acc) ->
+  factorial_step(N-1, N*Acc).
+```
+
+* This pattern with an accumulator is very common
+* There are a lot of sophisticated ways to make almost anything tail recursive, such
+  as Continuation Passing Style
+  
+???
+
+* We'll cover CPS and other fancy functional tricks in another session.
+
+---
+
+# Tail recursion; don't expect this in other languages
+
+* Erlang guarantees that the tail recursion optimization is performed.
+  *  Nothing would work right without it.
+
+* Ruby generally doesn't.
+  * It's not required, and tricky to implement well.
+  * Some implementations apparently do try
+
+* Rust doesn't but reserves the right to in the future
+  * Adding tail recursion would penalize every function call
+  * 'become' keyword exists to allow future work, but not implemented.
+
+
+---
+
+# Patterns for recursive programming
+
+* First establish the base case (usually the exit case)
+  * This case doesn't recurse
+  * For factorial it was factorial of 1
+  * Often it's the empty list.
+
+* Then establish what each step of the recursion looks like
+  * Can we describe this as a incremental step built on a smaller version of the problem
+  * For factorial; if we know factorial(N-1) we know how to compute factorial(N)
+  * Always check if the problem size decreases; does the data set shrink, etc.
+
+---
+
+# Patterns: Map
+
+We're going to use a list
+
+```erlang
+times_two([], Acc) ->
+  lists:reverse(Acc);
+times_two([Head|Tail], Acc) ->
+  times_two(Tail, [Head * 2 | Acc]).
+
+times_two([1, 2, 3], []).
+[6, 4, 2]
+```
+
+???
+* We use match syntax to decompose the list.
+* Note that this reverses the list, so we call reverse at the end.
+
+---
+
+# Patterns: Filter
+
+```erlang
+# Base case
+odd([], Acc) ->
+  lists:reverse(Acc);
+# match odd numbers
+odd([Head|Tail], Acc) when Head rem 2 =:= 1 ->
+  odd(Tail, [Head | Acc]);
+# 
+odd([Head|Tail], Acc) ->
+  odd(Tail, Acc).
+```
+
+---
+
+# Map and Filter built-ins
+
+* The above is a bit tedious, so we use higher order functions to make our life easier
+* Map: Takes a transformation function and a list
+```erlang
+times_two(List) ->
+  lists:map(fun(N) -> 2*N end, List).
+```
+* Filter: Takes a predicate function and a list
+```erlang
+odd(List) ->
+  lists:filter(fun(N) when N rem 2 =:= 1 ->
+                 true;
+                  (N) ->
+                 false            
+               end,
+               List).
+```
+
+???
+
+* Hey I've seen this in ruby/python etc!
+  The concepts of functional programming don't need a full blown functional language to be useful.
+
+---
+
+# Fold and its siblings
+
+* The swiss army knife 
+* Takes a function that takes a value, and a list
+* Returns a new list
+* Sequentially takes the leftmost element of the list, applies the function to the value and an accumulator, and repeats with every successive element.
+
+```erlang
+add_if_odd(List) ->
+  lists:foldl(fun(X, Sum) when X rem 2 =:= 1 ->
+                X + Sum;
+                 (X, Sum) ->
+                Sum
+              end,
+              0,
+              List).
+```
+* Foldl is left associative;
+```
+lists:foldl(F, 0, [1, 2, 3]) 
+
+f(3, f(2, f(1, 0)))
+```
+* Sometimes order matters; foldr exists if you need the other ordering
+* Use foldl preferentially (foldr isn't tail recursive)
+
+???
+
+* Sort of like ruby inject
+
+---
+
+# List comprehensions
+
+These replace the list and map operations in practice
+* More concise than the lists:map and lists:fold, and potentially more efficient and powerful
+```erlang
+[ X*X || X <- List, X < 4]
+```
+* Three parts
+  * An operation; such as X*X
+  * One (or more) 'taken from' operators; X <- List
+  * optional guard
+
+* The 'taken from' operation can be a match:
+  ```{X, Y} <- List``` only takes elements that match {X, Y}
+  If no match, skips that element	      
+	       
+* There can be more than one 'taken from'; in that case
+
+* The filter operation can be any valid guard expression
+	       
+???
+
+* The compiler has some clever optimizations to avoid unnecessary copies.
+
+---
+
+# List comprehensions in practice
+
+* Map
+```erlang
+times_two(List) ->
+  [X * 2 || X <- List].
+```
+* Filter: Takes a predicate function and a list
+```erlang
+odd(List) ->		 
+  [X || X <- List, X rem 2 =:= 1 ].
+```
+
+  * This page is very helpful: http://erlang.org/doc/programming_examples/list_comprehensions.html
+  
+
+---
+
+# Some thoughts on functional data structures.
+
+* Consider basic insertion on a data structures
+  NewData = insert(V, Data) 
+
+* In imperative languages, you can mutate/overwrite the old Data
+
+* In functional languages, you either have to
+  * copy Data,
+  * or do something clever
+
+This cleverness has overhead.
+
+* Hash is a good example; inserting up an element is constant time in the size of the Hash
+* No equivalent in Erlang; the nearest equivalent structures take log(Size) time.
+
+But it also has some huge benefits, such as the ability to easily save intermediate work and return to it.
+
+???
+
+* Don't get too caught up in the execution time difference; it rarely matters in practice. 
+
+---
+
+# More reading
+
+* 'The Little Schemer' and the sequels
+  It's a bit cutesey, but it introduces a lot of sophisticated concepts
+
+---
+
+# Next session
+	* Process Management
+		* exploring concurrency in Erlang
+		* state management
+		* linking and monitoring
+		* when a process dies unexpectedly
+		* supervision
+		* "let it crash" and how it affects design.
+
+    </textarea>
+    <script src="https://gnab.github.io/remark/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
